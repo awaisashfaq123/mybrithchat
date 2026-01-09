@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WhatsApp Pro Max 🟢</title>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    
+    <!-- PeerJS (Voice Calls) -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* --- CORE CSS --- */
+        :root {
+            --primary: #008069; --primary-dark: #006653; --secondary: #25D366;
+            --bg-chat: #efeae2; --white: #ffffff; --outgoing: #d9fdd3;
+            --text-main: #111b21; --text-sec: #667781; --call-bg: #0b141a;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, Helvetica, Arial, sans-serif; }
+        body { background-color: #111b21; height: 100vh; display: flex; justify-content: center; }
+
+        #app {
+            width: 100%; max-width: 450px; height: 100%; background: var(--white);
+            position: relative; overflow: hidden; display: flex; flex-direction: column;
+        }
+
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--white); transition: transform 0.3s ease; display: none; flex-direction: column; z-index: 10; }
+        .screen.active { display: flex; }
+        .screen.overlay { z-index: 50; }
+
+        /* AUTH */
+        #auth-screen { justify-content: center; align-items: center; padding: 30px; text-align: center; }
+        .auth-logo { width: 80px; height: 80px; background: var(--secondary); border-radius: 50%; display:flex; align-items:center; justify-content:center; color:white; font-size:40px; margin-bottom: 20px; }
+        .input-group { width: 100%; text-align: left; margin-bottom: 15px; }
+        .input-group label { font-size: 14px; color: var(--primary); font-weight: bold; }
+        .input-group input { width: 100%; padding: 10px 0; border: none; border-bottom: 2px solid var(--primary); outline: none; font-size: 16px; }
+        .btn-green { background: var(--primary); color: white; border: none; padding: 12px; width: 100%; border-radius: 3px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .toggle-text { margin-top: 20px; color: var(--text-sec); font-size: 14px; cursor: pointer; }
+
+        /* HOME */
+        .app-bar { background: var(--primary); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .tabs { display: flex; background: var(--primary); color: rgba(255,255,255,0.6); }
+        .tab { flex: 1; text-align: center; padding: 12px; font-weight: bold; font-size: 14px; cursor: pointer; border-bottom: 3px solid transparent; }
+        .tab.active { color: white; border-bottom: 3px solid white; }
+        .content-area { flex: 1; overflow-y: auto; position: relative; padding-bottom: 80px; }
+
+        .fab { position: absolute; bottom: 25px; right: 25px; width: 55px; height: 55px; background: var(--primary); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); cursor: pointer; z-index: 100; }
+        
+        .chat-item, .status-item { display: flex; padding: 12px 15px; border-bottom: 1px solid #f0f0f0; cursor: pointer; align-items: center; }
+        .avatar { width: 50px; height: 50px; background: #ddd; border-radius: 50%; margin-right: 15px; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; overflow: hidden; object-fit: cover; }
+        .chat-info { flex: 1; }
+        .c-name { font-weight: bold; font-size: 16px; color: var(--text-main); }
+        .c-msg { font-size: 14px; color: var(--text-sec); }
+
+        /* CHAT ROOM */
+        .chat-header { background: var(--primary); padding: 10px; display: flex; align-items: center; color: white; gap: 10px; }
+        .chat-bg { flex: 1; background: var(--bg-chat); background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 5px; }
+        .msg { max-width: 70%; padding: 6px 10px; border-radius: 8px; font-size: 14.2px; position: relative; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-wrap: break-word; }
+        .sent { align-self: flex-end; background: var(--outgoing); border-top-right-radius: 0; }
+        .received { align-self: flex-start; background: white; border-top-left-radius: 0; }
+        .msg-time { font-size: 10px; color: #999; text-align: right; margin-top: 2px; }
+        .input-bar { background: #f0f0f0; padding: 8px; display: flex; align-items: center; gap: 8px; }
+        .input-bar input { flex: 1; padding: 10px 15px; border-radius: 20px; border: none; outline: none; font-size: 15px; }
+
+        /* SETTINGS & PRIVACY */
+        .setting-header { padding: 20px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid #eee; }
+        .setting-item { padding: 15px 20px; display: flex; align-items: center; gap: 20px; cursor: pointer; }
+        .setting-item:hover { background: #f5f5f5; }
+        #privacy-modal { position: absolute; top:0; left:0; width:100%; height:100%; background:white; z-index:200; display:none; flex-direction:column; padding:20px; }
+
+        /* STATUS VIEWER */
+        #status-viewer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 1000; display: none; flex-direction: column; justify-content: center; align-items: center; }
+        #status-progress { width: 100%; height: 3px; background: #555; position: absolute; top: 10px; }
+        #status-bar { width: 0%; height: 100%; background: white; transition: width 10s linear; }
+        .close-status { position: absolute; top: 20px; right: 20px; color: white; font-size: 24px; cursor: pointer; z-index:1001; }
+
+        /* UTILS */
+        .hidden { display: none !important; }
+        #add-modal, #upload-modal { position: absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:150; display:none; justify-content:center; align-items:center; }
+        .modal-box { background:white; width: 85%; padding: 20px; border-radius: 5px; }
+        
+        /* CALL & CAMERA CSS SAME AS BEFORE */
+        #call-screen { background: var(--call-bg); color: white; align-items: center; justify-content: center; text-align: center; }
+        .call-avatar { width: 100px; height: 100px; background: #333; border-radius: 50%; margin: 30px auto; font-size: 40px; display: flex; align-items: center; justify-content: center; }
+        .call-actions { display: flex; gap: 40px; justify-content: center; position: absolute; bottom: 50px; width: 100%; }
+        .call-btn { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; }
+        .btn-end { background: #ff3b30; color: white; } .btn-answer { background: #25D366; color: white; } .btn-mute { background: #333; color: white; }
+        #camera-modal { position: absolute; top:0; left:0; width:100%; height:100%; background:black; z-index:200; display:none; flex-direction:column; }
+        #camera-feed { width: 100%; height: 100%; object-fit: cover; }
+        .cam-controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 30px; align-items: center; }
+        .capture-btn { width: 70px; height: 70px; border-radius: 50%; border: 4px solid white; background: transparent; cursor: pointer; }
+        .close-cam { position: absolute; top: 20px; right: 20px; color: white; font-size: 30px; cursor: pointer; z-index: 201; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+
+    <!-- AUTH SCREEN -->
+    <div id="auth-screen" class="screen active">
+        <div class="auth-logo"><i class="fas fa-whatsapp"></i></div>
+        <h2 id="auth-title">Welcome</h2>
+        <div style="font-size:13px; color:gray; margin-bottom:20px;">Phone number is your ID</div>
+        <div class="input-group"><label>Phone</label><input type="tel" id="regPhone" placeholder="+92 300 1234567"></div>
+        <div class="input-group" id="nameField"><label>Name</label><input type="text" id="regName" placeholder="e.g. Ali"></div>
+        <div class="input-group"><label>Password</label><input type="password" id="regPass" placeholder="******"></div>
+        <button class="btn-green" onclick="handleAuth()">AGREE AND CONTINUE</button>
+        <div class="toggle-text" onclick="toggleAuthMode()">Already have account? Login</div>
+    </div>
+
+    <!-- HOME SCREEN -->
+    <div id="home-screen" class="screen">
+        <div class="app-bar">
+            <span style="font-size: 20px; font-weight: bold;">WhatsApp</span>
+            <div><i class="fas fa-search"></i> &nbsp; <i class="fas fa-ellipsis-v" onclick="openSettings()"></i></div>
+        </div>
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('chats')">CHATS</div>
+            <div class="tab" onclick="switchTab('status')">STATUS</div>
+            <div class="tab" onclick="switchTab('calls')">CALLS</div>
+        </div>
+        
+        <div id="chats-view" class="content-area"></div>
+        
+        <div id="status-view" class="content-area hidden">
+            <div class="status-item" onclick="openCamera()">
+                <div class="avatar" style="background:#25D366; color:white;"><i class="fas fa-camera"></i></div>
+                <div class="chat-info"><div class="c-name">My Status</div><div class="c-msg">Tap to use Camera</div></div>
+            </div>
+            <div class="status-item" onclick="openUploadModal()">
+                <div class="avatar" style="background:#555; color:white;"><i class="fas fa-upload"></i></div>
+                <div class="chat-info"><div class="c-name">Upload Gallery</div><div class="c-msg">Video/Image (Max 5MB)</div></div>
+            </div>
+            <div style="padding:10px 15px; font-weight:bold; color:gray;">Recent updates</div>
+            <div id="statusList"></div>
+        </div>
+
+        <div id="calls-view" class="content-area hidden" style="text-align:center; padding-top:50px; color:gray;">Call History Empty</div>
+
+        <div class="fab" id="mainFab" onclick="fabAction()"><i class="fas fa-plus"></i></div>
+    </div>
+
+    <!-- CHAT ROOM -->
+    <div id="chat-room" class="screen overlay">
+        <div class="chat-header">
+            <i class="fas fa-arrow-left" onclick="closeChat()"></i>
+            <div class="avatar" id="roomAvatar" style="width:35px; height:35px; margin:0;">?</div>
+            <div style="flex:1;">
+                <div id="roomName" style="font-weight:bold;">User</div>
+                <div style="font-size:11px;">online</div>
+            </div>
+            <i class="fas fa-video" style="margin-right:15px;"></i>
+            <i class="fas fa-phone" onclick="startVoiceCall()"></i>
+        </div>
+        <div class="chat-bg" id="messagesArea"></div>
+        <div class="input-bar">
+            <input type="text" id="msgInput" placeholder="Message">
+            <div style="background:var(--primary); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white;" onclick="sendMessage()">➤</div>
+        </div>
+    </div>
+
+    <!-- SETTINGS SCREEN -->
+    <div id="settings-screen" class="screen overlay">
+        <div class="chat-header">
+            <i class="fas fa-arrow-left" onclick="closeSettings()"></i>
+            <span style="font-size:20px; font-weight:bold; margin-left:15px;">Settings</span>
+        </div>
+        <div class="setting-header">
+            <div class="avatar" style="width:60px; height:60px; font-size:30px; background:#ddd;" id="settingAvatar">?</div>
+            <div><h3 id="settingName">Name</h3><p id="settingPhone">+1234</p></div>
+        </div>
+        <!-- FIXED: Privacy Policy Link -->
+        <div class="setting-item" onclick="openPrivacy()"><i class="fas fa-key" style="color:#667781;"></i><div class="c-info"><h4>Account & Privacy</h4><p style="font-size:13px; color:gray;">Security, Privacy Policy</p></div></div>
+        <div class="setting-item" onclick="logout()"><i class="fas fa-sign-out-alt" style="color:red;"></i><div class="c-info"><h4 style="color:red;">Logout</h4></div></div>
+    </div>
+
+    <!-- PRIVACY SCREEN (NEW) -->
+    <div id="privacy-modal">
+        <h2 style="color:var(--primary); margin-bottom:20px;">Privacy Policy</h2>
+        <p>1. Messages are end-to-end encrypted (Simulated Peer-to-Peer).</p>
+        <p>2. Your status is shared only with people who have your number.</p>
+        <p>3. This is a secure Birthday Edition App.</p>
+        <button onclick="document.getElementById('privacy-modal').style.display='none'" class="btn-green" style="margin-top:20px;">CLOSE</button>
+    </div>
+
+    <!-- STATUS VIEWER -->
+    <div id="status-viewer">
+        <div id="status-progress"><div id="status-bar"></div></div>
+        <div class="close-status" onclick="closeStatus()">×</div>
+        <div id="status-content-area" style="width:100%; display:flex; justify-content:center;"></div>
+        <div style="position:absolute; bottom:20px; color:white; font-weight:bold;" id="status-author">Name</div>
+    </div>
+
+    <!-- UPLOAD MODAL -->
+    <div id="upload-modal">
+        <div class="modal-box">
+            <h3>Upload Status</h3>
+            <p style="font-size:12px; color:red;">Max 5MB (Video/Image)</p>
+            <input type="file" id="statusFile" accept="image/*,video/mp4">
+            <div style="text-align:right; margin-top:20px;">
+                <button onclick="document.getElementById('upload-modal').style.display='none'" style="border:none; background:none; color:gray;">CANCEL</button>
+                <button onclick="uploadStatus()" style="border:none; background:none; color:var(--primary); font-weight:bold; margin-left:20px;">UPLOAD</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CALL SCREEN, CAMERA MODAL, ADD MODAL (SAME AS BEFORE) -->
+    <div id="call-screen" class="screen overlay">
+        <div style="margin-top:50px;"><i class="fas fa-lock" style="font-size:12px;"></i> End-to-end encrypted</div>
+        <div class="call-avatar" id="callAvatar">?</div>
+        <div class="call-name" id="callName">Unknown</div>
+        <div class="call-status" id="callStatus">Ringing...</div>
+        <div class="call-actions hidden" id="incomingActions">
+            <div class="call-btn btn-end" onclick="endCall()"><i class="fas fa-phone-slash"></i></div>
+            <div class="call-btn btn-answer" onclick="answerCall()"><i class="fas fa-phone"></i></div>
+        </div>
+        <div class="call-actions" id="activeActions">
+             <div class="call-btn btn-mute"><i class="fas fa-microphone-slash"></i></div>
+            <div class="call-btn btn-end" onclick="endCall()"><i class="fas fa-phone-slash"></i></div>
+             <div class="call-btn btn-mute"><i class="fas fa-volume-up"></i></div>
+        </div>
+        <audio id="remoteAudio" autoplay></audio>
+    </div>
+
+    <div id="camera-modal">
+        <div class="close-cam" onclick="closeCamera()">×</div>
+        <video id="camera-feed" autoplay playsinline></video>
+        <div class="cam-controls"><div class="capture-btn" onclick="capturePhoto()"></div></div>
+        <canvas id="photo-canvas" style="display:none;"></canvas>
+    </div>
+
+    <div id="add-modal">
+        <div class="modal-box">
+            <h3>Add Contact</h3>
+            <input type="tel" id="friendIdInput" placeholder="Enter Phone Number" style="width:100%; padding:10px; margin:10px 0; border:1px solid #ccc;">
+            <div style="text-align:right;">
+                <button onclick="document.getElementById('add-modal').style.display='none'" style="border:none; background:none; color:gray;">CANCEL</button>
+                <button onclick="addFriend()" style="border:none; background:none; color:var(--primary); font-weight:bold;">ADD</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // --- FIREBASE CONFIG ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyBT_8OF_o71Yyy0gS4NCuN3efMU53RxYXM",
+      authDomain: "birth-chat-app.firebaseapp.com",
+      databaseURL: "https://birth-chat-app-default-rtdb.firebaseio.com",
+      projectId: "birth-chat-app",
+      storageBucket: "birth-chat-app.firebasestorage.app",
+      messagingSenderId: "222444812540",
+      appId: "1:222444812540:web:b42d1c9ce6f20f07b67f79"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // VARIABLES
+    let currentUser = JSON.parse(localStorage.getItem('wa_user')) || null;
+    let isSignup = true;
+    let currentChatId = null;
+    let currentTab = 'chats';
+    let myPeer = null; let currentCall = null; let localStream = null;
+
+    window.onload = function() { if(currentUser) initApp(); else document.getElementById('auth-screen').classList.add('active'); };
+
+    // AUTH
+    function toggleAuthMode() { isSignup=!isSignup; document.getElementById('auth-title').innerText=isSignup?"Welcome":"Login"; document.getElementById('nameField').style.display=isSignup?"block":"none"; }
+    function handleAuth() {
+        const ph=document.getElementById('regPhone').value.replace(/\./g,''), pa=document.getElementById('regPass').value, nm=document.getElementById('regName').value;
+        if(!ph||!pa) return alert("Fill fields");
+        const ref=db.ref('users/'+ph);
+        ref.once('value', s=>{
+            if(isSignup) { if(s.exists()) alert("User exists"); else { ref.set({phone:ph,password:pa,name:nm}); loginSuccess({phone:ph,password:pa,name:nm}); } }
+            else { if(s.exists()&&s.val().password===pa) loginSuccess(s.val()); else alert("Invalid Login"); }
+        });
+    }
+    function loginSuccess(u) { currentUser=u; localStorage.setItem('wa_user', JSON.stringify(u)); document.getElementById('auth-screen').classList.remove('active'); initApp(); }
+    function logout() { localStorage.removeItem('wa_user'); location.reload(); }
+
+    function initApp() { document.getElementById('home-screen').classList.add('active'); initPeer(); loadChats(); loadStatuses(); updateProfile(); }
+
+    // SETTINGS & PRIVACY
+    function openSettings() { document.getElementById('settings-screen').classList.add('active'); updateProfile(); }
+    function closeSettings() { document.getElementById('settings-screen').classList.remove('active'); }
+    function updateProfile() {
+        document.getElementById('settingName').innerText = currentUser.name;
+        document.getElementById('settingPhone').innerText = currentUser.phone;
+        document.getElementById('settingAvatar').innerText = currentUser.name.charAt(0);
+    }
+    function openPrivacy() { document.getElementById('privacy-modal').style.display = 'flex'; }
+
+    // STATUS (UPDATED LIMIT)
+    function openUploadModal() { document.getElementById('upload-modal').style.display = 'flex'; }
+    
+    function uploadStatus() {
+        const file = document.getElementById('statusFile').files[0];
+        if(!file) return;
+
+        // FIXED: Increased Limit to 5MB for Video
+        if(file.size > 5 * 1024 * 1024) { 
+            alert("File too large! Keep under 5MB for smooth experience."); return; 
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const type = file.type.startsWith('video') ? 'video' : 'image';
+            db.ref('status/' + currentUser.phone).set({
+                content: e.target.result, type: type, author: currentUser.name, timestamp: Date.now()
+            });
+            document.getElementById('upload-modal').style.display = 'none';
+            alert("Status Uploaded! (Tap Status tab to refresh)");
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function loadStatuses() {
+        db.ref('status').on('value', snap => {
+            const list = document.getElementById('statusList');
+            list.innerHTML = '';
+            snap.forEach(child => {
+                const s = child.val();
+                if(child.key === currentUser.phone) return;
+                const div = document.createElement('div');
+                div.className = 'status-item';
+                div.onclick = () => viewStatus(s);
+                div.innerHTML = `<div class="avatar" style="border:2px solid #25D366; padding:2px;">${s.author.charAt(0)}</div><div class="chat-info"><div class="c-name">${s.author}</div><div class="c-msg">${new Date(s.timestamp).toLocaleTimeString()}</div></div>`;
+                list.appendChild(div);
+            });
+        });
+    }
+
+    function viewStatus(data) {
+        const viewer = document.getElementById('status-viewer');
+        const content = document.getElementById('status-content-area');
+        viewer.style.display = 'flex';
+        document.getElementById('status-author').innerText = data.author;
+        
+        if(data.type === 'video') {
+            // Video with Autoplay
+            content.innerHTML = `<video src="${data.content}" autoplay playsinline controls style="max-width:100%; max-height:80vh;"></video>`;
+        } else {
+            content.innerHTML = `<img src="${data.content}" style="max-width:100%; max-height:80vh;">`;
+        }
+        
+        // Animation 10 seconds
+        const bar = document.getElementById('status-bar');
+        bar.style.width = '0%';
+        setTimeout(()=>bar.style.width='100%',100);
+        setTimeout(closeStatus, 10000); 
+    }
+    function closeStatus() { document.getElementById('status-viewer').style.display = 'none'; document.getElementById('status-bar').style.width='0%'; document.getElementById('status-content-area').innerHTML=''; }
+
+    // TABS & CAMERA
+    function switchTab(t) { 
+        currentTab=t; document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); event.target.classList.add('active');
+        ['chats','status','calls'].forEach(x=>document.getElementById(x+'-view').classList.add('hidden')); document.getElementById(t+'-view').classList.remove('hidden');
+        const fab=document.getElementById('mainFab');
+        if(t==='chats') { fab.innerHTML='<i class="fas fa-plus"></i>'; fab.style.background='#008069'; }
+        else if(t==='status') { fab.innerHTML='<i class="fas fa-camera"></i>'; fab.style.background='#667781'; }
+        else fab.style.display='none';
+    }
+    function fabAction() { if(currentTab==='chats') document.getElementById('add-modal').style.display='flex'; if(currentTab==='status') openCamera(); }
+
+    // CAMERA LOGIC
+    function openCamera() { document.getElementById('camera-modal').style.display='flex'; navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}).then(s=>{document.getElementById('camera-feed').srcObject=s}); }
+    function closeCamera() { document.getElementById('camera-modal').style.display='none'; const v=document.getElementById('camera-feed'); if(v.srcObject) v.srcObject.getTracks().forEach(t=>t.stop()); }
+    function capturePhoto() { 
+        const v=document.getElementById('camera-feed'), c=document.getElementById('photo-canvas'); 
+        c.width=v.videoWidth; c.height=v.videoHeight; c.getContext('2d').drawImage(v,0,0);
+        db.ref('status/'+currentUser.phone).set({content:c.toDataURL('image/jpeg'), type:'image', author:currentUser.name, timestamp:Date.now()});
+        closeCamera(); alert("Photo Status Uploaded!"); 
+    }
+
+    // PEERJS & CALLS
+    function initPeer() {
+        const id = 'wa_'+currentUser.phone; myPeer = new Peer(id);
+        myPeer.on('call', call => {
+            navigator.mediaDevices.getUserMedia({audio:true}).then(stream => {
+                localStream=stream; currentCall=call;
+                document.getElementById('call-screen').classList.add('active'); document.getElementById('callName').innerText="Incoming...";
+                document.getElementById('incomingActions').classList.remove('hidden'); document.getElementById('activeActions').classList.add('hidden');
+            });
+        });
+    }
+    function startVoiceCall() {
+        const fid = currentChatId.split('_').find(x=>x!==currentUser.phone);
+        navigator.mediaDevices.getUserMedia({audio:true}).then(stream => {
+            localStream=stream; 
+            document.getElementById('call-screen').classList.add('active'); document.getElementById('callName').innerText="Calling...";
+            document.getElementById('incomingActions').classList.add('hidden'); document.getElementById('activeActions').classList.remove('hidden');
+            const call = myPeer.call('wa_'+fid, stream); currentCall=call;
+            call.on('stream', s => document.getElementById('remoteAudio').srcObject=s);
+            call.on('close', endCall);
+        });
+    }
+    function answerCall() { currentCall.answer(localStream); currentCall.on('stream', s => document.getElementById('remoteAudio').srcObject=s); document.getElementById('incomingActions').classList.add('hidden'); document.getElementById('activeActions').classList.remove('hidden'); }
+    function endCall() { if(currentCall) currentCall.close(); if(localStream) localStream.getTracks().forEach(t=>t.stop()); document.getElementById('call-screen').classList.remove('active'); }
+
+    // CHATS
+    function addFriend() { const fid=document.getElementById('friendIdInput').value.replace(/\./g,''); if(fid) db.ref('users/'+fid).once('value', s=>{ if(s.exists()) { db.ref(`contacts/${currentUser.phone}/${fid}`).set({name:s.val().name,phone:s.val().phone}); document.getElementById('add-modal').style.display='none'; } else alert("User not found"); }); }
+    function loadChats() { db.ref(`contacts/${currentUser.phone}`).on('value', s=>{ const l=document.getElementById('chats-view'); l.innerHTML=''; s.forEach(c=>{ const f=c.val(); const d=document.createElement('div'); d.className='chat-item'; d.onclick=()=>openChat(f); d.innerHTML=`<div class="avatar">${f.name.charAt(0)}</div><div class="chat-info"><div class="c-name">${f.name}</div><div class="c-msg">Tap to chat</div></div>`; l.appendChild(d); }); }); }
+    function openChat(f) { const i1=currentUser.phone, i2=f.phone; currentChatId=i1<i2?`${i1}_${i2}`:`${i2}_${i1}`; document.getElementById('roomName').innerText=f.name; document.getElementById('roomAvatar').innerText=f.name.charAt(0); document.getElementById('chat-room').classList.add('active'); loadMessages(); }
+    function closeChat() { document.getElementById('chat-room').classList.remove('active'); currentChatId=null; }
+    function sendMessage() { const t=document.getElementById('msgInput').value; if(t&&currentChatId) { db.ref(`chats/${currentChatId}`).push({text:t,sender:currentUser.phone,time:Date.now()}); document.getElementById('msgInput').value=''; } }
+    function loadMessages() { const a=document.getElementById('messagesArea'); a.innerHTML=''; db.ref(`chats/${currentChatId}`).on('child_added', s=>{ const m=s.val(); const d=document.createElement('div'); d.className=`msg ${m.sender===currentUser.phone?'sent':'received'}`; d.innerHTML=`${m.text}<div class="msg-time">${new Date(m.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>`; a.appendChild(d); a.scrollTop=a.scrollHeight; }); }
+
+</script>
+</body>
+</html>

@@ -1,2 +1,0 @@
-# mybrithchat
-my chat
